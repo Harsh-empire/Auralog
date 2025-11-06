@@ -1,0 +1,4 @@
+- [ ] Investigate reported error with start_waitress.ps1
+- [ ] Adjust script to resolve issue
+- [ ] Re-run PSScriptAnalyzer to confirm clean state
+- [ ] Provide summary and next steps

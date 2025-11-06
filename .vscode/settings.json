@@ -1,0 +1,7 @@
+{
+  // Suggest the workspace virtual environment so Pylance picks up installed packages
+  "python.defaultInterpreterPath": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
+  "python.analysis.extraPaths": [
+    "${workspaceFolder}\\.venv\\Lib\\site-packages"
+  ]
+}

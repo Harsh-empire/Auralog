@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width,initial-scale=1" />
+		<meta name="application-name" content="AuraLog" />
+		<meta name="description" content="AuraLog: Secure identity registration and project progress tracking for modern teams. Your future starts here." />
+		<meta name="keywords" content="AuraLog, AuraLog registry, project tracking, team collaboration, progress logging, mission dashboard" />
+		<link rel="canonical" href="https://auralog.com/" />
+		<meta property="og:title" content="AuraLog Registry" />
+		<meta property="og:description" content="AuraLog: Secure identity registration and project progress tracking for modern teams." />
+		<meta property="og:type" content="website" />
+		<meta property="og:url" content="https://auralog.com/" />
+		<meta property="og:image" content="https://auralog.com/static/auralog-og.png" />
+		<meta name="twitter:card" content="summary_large_image" />
+		<meta name="twitter:title" content="AuraLog Registry" />
+		<meta name="twitter:description" content="AuraLog keeps global teams in sync with a secure registration + mission control dashboard." />
+		<meta name="twitter:image" content="https://auralog.com/static/auralog-og.png" />
+		<title>AuraLog Registry</title>
+		<link rel="stylesheet" href="static/css/style.css">
+	</head>
+	<body>
+		<div class="bg">
+			<canvas id="nebula"></canvas>
+			<div class="grid"></div>
+		</div>
+
+		<main class="card" data-brand="auralog">
+			<header class="card-header">
+				<h1>Join AuraLog</h1>
+				<p class="subtitle">Create your identity in the AuraLog registry</p>
+			</header>
+
+			<form id="regForm" class="form" autocomplete="off">
+				<div class="row">
+					<label class="field">
+						<input name="fullName" type="text" required />
+						<span class="label">Full name</span>
+						<span class="bar"></span>
+					</label>
+
+					<label class="field">
+						<input name="username" type="text" required />
+						<span class="label">Username</span>
+						<span class="bar"></span>
+					</label>
+				</div>
+
+				<label class="field wide">
+					<input name="email" type="email" required />
+					<span class="label">Email</span>
+					<span class="bar"></span>
+				</label>
+
+				<label class="field wide">
+					<input name="password" type="password" minlength="6" required />
+					<span class="label">Password</span>
+					<span class="bar"></span>
+				</label>
+
+				<label class="field wide">
+					<select name="role">
+						<option value="explorer">Explorer</option>
+						<option value="builder">Builder</option>
+						<option value="designer">Designer</option>
+						<option value="other">Other</option>
+					</select>
+					<span class="label small">Role</span>
+				</label>
+
+				<label class="field wide">
+					<textarea name="bio" rows="3" placeholder="Short bio (optional)"></textarea>
+				</label>
+
+				<div class="actions">
+					<div class="checkbox-group">
+						<label class="checkbox">
+							<input type="checkbox" name="agree" required />
+							<span>I agree to the future terms</span>
+						</label>
+						<label class="checkbox">
+							<input type="checkbox" name="remember" checked />
+							<span>Remember my credentials on this device</span>
+						</label>
+					</div>
+
+					<button id="submitBtn" type="submit" class="btn-neon">Register</button>
+				</div>
+			</form>
+
+			<section class="login-panel">
+				<h2>Already exploring?</h2>
+				<p class="login-copy">Use your existing callsign to access the dashboard.</p>
+				<form id="loginForm" class="login-form" autocomplete="off">
+					<label class="field wide">
+						<input name="loginUsername" type="text" required />
+						<span class="label">Username or email</span>
+						<span class="bar"></span>
+					</label>
+					<label class="field wide">
+						<input name="loginPassword" type="password" required />
+						<span class="label">Password</span>
+						<span class="bar"></span>
+					</label>
+					<div class="login-actions">
+						<label class="checkbox">
+							<input type="checkbox" name="loginRemember" checked />
+							<span>Stay logged in on this device</span>
+						</label>
+						<button type="submit" class="btn-outline">Log in</button>
+					</div>
+				</form>
+			</section>
+
+			<div id="toast" class="toast hidden"></div>
+		</main>
+
+		<script src="static/js/app.js"></script>
+	</body>
+</html>
+

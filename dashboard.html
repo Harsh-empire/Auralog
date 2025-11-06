@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+  <head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="application-name" content="AuraLog" />
+  <meta name="description" content="AuraLog Mission Control keeps global teams aligned with live progress tracking, blockers, and doubt resolution." />
+  <meta name="keywords" content="AuraLog, mission control, project tracker, team dashboard, progress updates" />
+  <link rel="canonical" href="https://auralog.com/dashboard" />
+  <meta property="og:title" content="AuraLog Mission Control" />
+  <meta property="og:description" content="AuraLog Mission Control keeps global teams aligned with live progress, blockers, and doubts." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://auralog.com/dashboard" />
+  <meta property="og:image" content="https://auralog.com/static/auralog-og.png" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="AuraLog Mission Control" />
+  <meta name="twitter:description" content="AuraLog keeps global teams in sync with live progress tracking and doubt resolution." />
+  <meta name="twitter:image" content="https://auralog.com/static/auralog-og.png" />
+  <title>AuraLog Mission Control</title>
+    <link rel="stylesheet" href="static/css/style.css">
+  </head>
+  <body class="dashboard-page">
+    <div class="bg">
+      <canvas id="nebula"></canvas>
+      <div class="grid"></div>
+    </div>
+
+    <main class="card dashboard">
+      <header class="card-header">
+        <h1>AuraLog Mission Control</h1>
+        <p class="subtitle">Track milestones, surface blockers, and collaborate with mentors worldwide.</p>
+      </header>
+
+      <section class="dashboard-grid">
+        <section class="panel">
+          <h2>Share a Progress Update</h2>
+          <form id="progressForm" autocomplete="off">
+            <div class="row">
+              <label class="field">
+                <input name="username" type="text" placeholder=" " required />
+                <span class="label">Username</span>
+                <span class="bar"></span>
+              </label>
+              <label class="field">
+                <input name="title" type="text" placeholder=" " required />
+                <span class="label">Update title</span>
+                <span class="bar"></span>
+              </label>
+            </div>
+            <label class="field wide">
+              <textarea name="summary" rows="3" placeholder="What did you build or learn?" required></textarea>
+            </label>
+            <div class="row">
+              <label class="field">
+                <select name="status">
+                  <option value="in-progress">In progress</option>
+                  <option value="needs-review">Needs review</option>
+                  <option value="blocked">Blocked</option>
+                  <option value="complete">Complete</option>
+                </select>
+                <span class="label small">Status</span>
+              </label>
+              <label class="field">
+                <input name="blockers" type="text" placeholder=" " />
+                <span class="label">Blockers</span>
+                <span class="bar"></span>
+              </label>
+            </div>
+            <label class="field wide">
+              <textarea name="errors" rows="2" placeholder="Log failing tests, bugs, or error messages here"></textarea>
+            </label>
+            <button type="submit" class="btn-neon">Log progress</button>
+          </form>
+        </section>
+
+        <section class="panel">
+          <h2>Raise a Doubt</h2>
+          <form id="doubtForm" autocomplete="off">
+            <label class="field wide">
+              <input name="username" type="text" placeholder=" " required />
+              <span class="label">Username</span>
+              <span class="bar"></span>
+            </label>
+            <label class="field wide">
+              <input name="topic" type="text" placeholder=" " required />
+              <span class="label">Topic</span>
+              <span class="bar"></span>
+            </label>
+            <label class="field wide">
+              <textarea name="question" rows="4" placeholder="Describe the challenge or question" required></textarea>
+            </label>
+            <button type="submit" class="btn-neon">Send question</button>
+          </form>
+        </section>
+
+        <section class="panel">
+          <h2>Mission Stats</h2>
+          <div id="progressStats" class="stats-grid"></div>
+        </section>
+      </section>
+
+      <section class="panel">
+        <h2>Progress Stream</h2>
+        <div id="progressFeed" class="feed"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Open Doubts</h2>
+        <div id="doubtFeed" class="feed"></div>
+      </section>
+    </main>
+
+    <div id="dashToast" class="toast hidden"></div>
+
+    <script src="static/js/app.js"></script>
+    <script src="static/js/dashboard.js"></script>
+  </body>
+</html>

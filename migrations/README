@@ -1,0 +1,1 @@
+`flask db` migration scripts live here. Use `flask db migrate` to generate revisions and `flask db upgrade` to apply them.
