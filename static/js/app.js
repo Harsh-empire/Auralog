@@ -94,17 +94,51 @@
   const toast = document.getElementById('toast');
   const btn = document.getElementById('submitBtn');
   const PROFILE_KEY = 'futurereg-profile';
+  const THEME_STORAGE_KEY = 'futurereg-theme';
+  const CODE_THEME_STORAGE_KEY = 'futurereg-code-theme';
+  const THEMES = ['default','dark','neon','aurora','void','sunset'];
+  const CODE_THEMES = ['monokai','github','dracula'];
   let savedProfile = null;
+
+  function applyBodyTheme(theme){
+    const normalized = THEMES.includes(theme) ? theme : 'default';
+    document.body.classList.remove(...THEMES.map((value)=>`theme-${value}`));
+    document.body.classList.add(`theme-${normalized}`);
+  }
+
+  function applyBodyCodeTheme(theme){
+    const normalized = CODE_THEMES.includes(theme) ? theme : 'monokai';
+    document.body.classList.remove('code-theme-monokai','code-theme-github','code-theme-dracula');
+    document.body.classList.add(`code-theme-${normalized}`);
+  }
+
+  function readStored(key, fallback){
+    try{
+      const value = localStorage.getItem(key);
+      return value || fallback;
+    }catch(err){
+      return fallback;
+    }
+  }
   try {
     savedProfile = JSON.parse(localStorage.getItem(PROFILE_KEY) || 'null');
   } catch (err) {
     savedProfile = null;
   }
 
+  const initialTheme = (savedProfile && savedProfile.theme) || readStored(THEME_STORAGE_KEY, 'default');
+  applyBodyTheme(initialTheme);
+  const initialCodeTheme = (savedProfile && savedProfile.code_theme) || readStored(CODE_THEME_STORAGE_KEY, 'monokai');
+  applyBodyCodeTheme(initialCodeTheme);
+
   function persistProfile(profile){
     if(!profile) return;
+    const merged = Object.assign({}, savedProfile || {}, profile);
+    savedProfile = merged;
     try {
-      localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
+      localStorage.setItem(PROFILE_KEY, JSON.stringify(merged));
+      if(merged.theme) localStorage.setItem(THEME_STORAGE_KEY, merged.theme);
+      if(merged.code_theme) localStorage.setItem(CODE_THEME_STORAGE_KEY, merged.code_theme);
     } catch (err) {
       /* localStorage might be unavailable */
     }
@@ -218,6 +252,10 @@
         bio: data.bio || '',
         remember: form.elements.remember ? form.elements.remember.checked : false
       };
+      const currentTheme = THEMES.find((theme)=>document.body.classList.contains(`theme-${theme}`)) || initialTheme;
+      const currentCodeTheme = CODE_THEMES.find((theme)=>document.body.classList.contains(`code-theme-${theme}`)) || initialCodeTheme;
+      profileSnapshot.theme = currentTheme;
+      profileSnapshot.code_theme = currentCodeTheme;
       if(profileSnapshot.fullName || profileSnapshot.username || profileSnapshot.email){
         persistProfile(profileSnapshot);
       }
@@ -235,6 +273,12 @@
           showToast('Welcome aboard — id: '+payload.id,true);
           try{ launchConfetti(); }catch(e){/* ignore */}
           persistProfile(profileSnapshot);
+          // persist simple token so the dashboard can allow profile edits
+          try{
+            const stored = JSON.parse(localStorage.getItem(PROFILE_KEY) || 'null') || {};
+            stored.token = payload.id;
+            localStorage.setItem(PROFILE_KEY, JSON.stringify(stored));
+          }catch(e){/* ignore */}
           try { localStorage.setItem('futurereg-api-base', API_BASE); } catch (err) { /* ignore */ }
           setTimeout(()=>{
             const dashUrl = `${API_BASE}/dashboard`;
@@ -265,7 +309,15 @@
         showToast('Enter your callsign to continue', false);
         return;
       }
-      showToast('Login happens inside the dashboard launch — registered explorers can head there.');
+      const remember = loginForm.elements.loginRemember ? !!loginForm.elements.loginRemember.checked : false;
+      const updatedProfile = Object.assign({}, savedProfile || {}, { username, remember });
+      persistProfile(updatedProfile);
+      try { localStorage.setItem('futurereg-api-base', API_BASE); } catch (err) { /* ignore */ }
+      showToast('Launching dashboard...', true);
+      setTimeout(()=>{
+        const dashUrl = `${API_BASE}/dashboard`;
+        window.location.href = dashUrl;
+      }, 400);
     });
   }
 

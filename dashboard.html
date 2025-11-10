@@ -25,88 +25,302 @@
       <div class="grid"></div>
     </div>
 
-    <main class="card dashboard">
+    <main class="card dashboard" data-section="projects">
       <header class="card-header">
         <h1>AuraLog Mission Control</h1>
         <p class="subtitle">Track milestones, surface blockers, and collaborate with mentors worldwide.</p>
       </header>
 
-      <section class="dashboard-grid">
-        <section class="panel">
-          <h2>Share a Progress Update</h2>
-          <form id="progressForm" autocomplete="off">
+      <nav class="dashboard-tabs">
+        <button class="dashboard-tab active" type="button" data-target="projects">Projects</button>
+        <button class="dashboard-tab" type="button" data-target="activity">Activity</button>
+        <button class="dashboard-tab" type="button" data-target="profile">Profile</button>
+        <button class="dashboard-tab" type="button" data-target="settings">Settings</button>
+        <button class="dashboard-tab" type="button" data-target="about">About</button>
+        <button class="dashboard-tab" type="button" data-target="help">Help</button>
+      </nav>
+
+      <section class="deck-section is-active" data-section="projects">
+        <section class="panel project-panel">
+          <h2>Publish a Project</h2>
+          <p class="panel-help">Share what you are building. AuraLog generates a quick summary and tags to help others discover your work.</p>
+          <form id="projectForm" autocomplete="off">
             <div class="row">
               <label class="field">
-                <input name="username" type="text" placeholder=" " required />
-                <span class="label">Username</span>
+                <input name="owner" type="text" placeholder=" " required />
+                <span class="label">Your handle or team name</span>
                 <span class="bar"></span>
               </label>
               <label class="field">
                 <input name="title" type="text" placeholder=" " required />
-                <span class="label">Update title</span>
+                <span class="label">Project title</span>
                 <span class="bar"></span>
               </label>
             </div>
             <label class="field wide">
-              <textarea name="summary" rows="3" placeholder="What did you build or learn?" required></textarea>
+              <input name="repo_url" type="url" placeholder=" " />
+              <span class="label">Repository URL (optional)</span>
+              <span class="bar"></span>
+            </label>
+            <label class="field wide">
+              <textarea name="description" rows="4" placeholder="What does the project do?" required></textarea>
+            </label>
+            <label class="field wide">
+              <textarea name="summary" rows="2" placeholder="Add a short summary (optional, AI will help)"></textarea>
             </label>
             <div class="row">
               <label class="field">
-                <select name="status">
-                  <option value="in-progress">In progress</option>
-                  <option value="needs-review">Needs review</option>
-                  <option value="blocked">Blocked</option>
-                  <option value="complete">Complete</option>
-                </select>
-                <span class="label small">Status</span>
+                <input name="tags" type="text" placeholder=" " />
+                <span class="label">Tags (comma separated)</span>
+                <span class="bar"></span>
               </label>
               <label class="field">
-                <input name="blockers" type="text" placeholder=" " />
-                <span class="label">Blockers</span>
+                <input name="language" type="text" placeholder=" " />
+                <span class="label">Snippet language</span>
                 <span class="bar"></span>
               </label>
             </div>
             <label class="field wide">
-              <textarea name="errors" rows="2" placeholder="Log failing tests, bugs, or error messages here"></textarea>
+              <input name="snippet_title" type="text" placeholder=" " />
+              <span class="label">Snippet title (optional)</span>
+              <span class="bar"></span>
             </label>
-            <button type="submit" class="btn-neon">Log progress</button>
+            <label class="field wide">
+              <textarea name="code" rows="6" placeholder="Paste a representative code snippet (optional)"></textarea>
+            </label>
+            <label class="field wide">
+              <textarea name="snippet_notes" rows="2" placeholder="Notes about the snippet"></textarea>
+            </label>
+            <button type="submit" class="btn-neon">Publish project</button>
           </form>
         </section>
 
         <section class="panel">
-          <h2>Raise a Doubt</h2>
-          <form id="doubtForm" autocomplete="off">
-            <label class="field wide">
-              <input name="username" type="text" placeholder=" " required />
-              <span class="label">Username</span>
-              <span class="bar"></span>
-            </label>
-            <label class="field wide">
-              <input name="topic" type="text" placeholder=" " required />
-              <span class="label">Topic</span>
-              <span class="bar"></span>
-            </label>
-            <label class="field wide">
-              <textarea name="question" rows="4" placeholder="Describe the challenge or question" required></textarea>
-            </label>
-            <button type="submit" class="btn-neon">Send question</button>
-          </form>
+          <h2>Project Library</h2>
+          <div id="projectFeed" class="feed project-feed"></div>
+        </section>
+      </section>
+
+      <section class="deck-section" data-section="activity">
+        <div class="dashboard-grid">
+          <section class="panel">
+            <h2>Share a Progress Update</h2>
+            <form id="progressForm" autocomplete="off">
+              <div class="row">
+                <label class="field">
+                  <input name="username" type="text" placeholder=" " required />
+                  <span class="label">Username</span>
+                  <span class="bar"></span>
+                </label>
+                <label class="field">
+                  <input name="title" type="text" placeholder=" " required />
+                  <span class="label">Update title</span>
+                  <span class="bar"></span>
+                </label>
+              </div>
+              <label class="field wide">
+                <textarea name="summary" rows="3" placeholder="What did you build or learn?" required></textarea>
+              </label>
+              <div class="row">
+                <label class="field">
+                  <select name="status">
+                    <option value="in-progress">In progress</option>
+                    <option value="needs-review">Needs review</option>
+                    <option value="blocked">Blocked</option>
+                    <option value="complete">Complete</option>
+                  </select>
+                  <span class="label small">Status</span>
+                </label>
+                <label class="field">
+                  <input name="blockers" type="text" placeholder=" " />
+                  <span class="label">Blockers</span>
+                  <span class="bar"></span>
+                </label>
+              </div>
+              <label class="field wide">
+                <textarea name="errors" rows="2" placeholder="Log failing tests, bugs, or error messages here"></textarea>
+              </label>
+              <button type="submit" class="btn-neon">Log progress</button>
+            </form>
+          </section>
+
+          <section class="panel">
+            <h2>Raise a Doubt</h2>
+            <form id="doubtForm" autocomplete="off">
+              <label class="field wide">
+                <input name="username" type="text" placeholder=" " required />
+                <span class="label">Username</span>
+                <span class="bar"></span>
+              </label>
+              <label class="field wide">
+                <input name="topic" type="text" placeholder=" " required />
+                <span class="label">Topic</span>
+                <span class="bar"></span>
+              </label>
+              <label class="field wide">
+                <textarea name="question" rows="4" placeholder="Describe the challenge or question" required></textarea>
+              </label>
+              <button type="submit" class="btn-neon">Send question</button>
+            </form>
+          </section>
+
+          <section class="panel">
+            <h2>Mission Stats</h2>
+            <div id="progressStats" class="stats-grid"></div>
+          </section>
+        </div>
+
+        <section class="panel">
+          <h2>Progress Stream</h2>
+          <div id="progressFeed" class="feed"></div>
         </section>
 
         <section class="panel">
-          <h2>Mission Stats</h2>
-          <div id="progressStats" class="stats-grid"></div>
+          <h2>Open Doubts</h2>
+          <div id="doubtFeed" class="feed"></div>
         </section>
       </section>
 
-      <section class="panel">
-        <h2>Progress Stream</h2>
-        <div id="progressFeed" class="feed"></div>
+      <section class="deck-section" data-section="profile">
+        <section class="panel">
+          <h2>Your Profile</h2>
+          <p class="panel-help">Edit a lightweight public profile. Save to sync details locally and, if registered, with the AuraLog service.</p>
+          <p class="panel-help" id="profileTokenHint"></p>
+          <form id="profileForm" autocomplete="off">
+            <div class="row">
+              <label class="field">
+                <input name="username" type="text" placeholder=" " readonly />
+                <span class="label">Your handle</span>
+                <span class="bar"></span>
+              </label>
+              <label class="field">
+                <input name="fullName" type="text" placeholder=" " />
+                <span class="label">Full name</span>
+                <span class="bar"></span>
+              </label>
+            </div>
+            <label class="field wide">
+              <textarea name="bio" rows="3" placeholder="A short bio"></textarea>
+            </label>
+            <div class="row">
+              <label class="field">
+                <input name="avatar" type="url" placeholder=" " />
+                <span class="label">Avatar URL</span>
+                <span class="bar"></span>
+              </label>
+              <label class="field">
+                <input name="github" type="url" placeholder=" " />
+                <span class="label">GitHub</span>
+                <span class="bar"></span>
+              </label>
+            </div>
+            <div class="row">
+              <label class="field">
+                <input name="linkedin" type="url" placeholder=" " />
+                <span class="label">LinkedIn</span>
+                <span class="bar"></span>
+              </label>
+              <label class="field">
+                <input name="website" type="url" placeholder=" " />
+                <span class="label">Website</span>
+                <span class="bar"></span>
+              </label>
+            </div>
+            <div class="row">
+              <button type="submit" class="btn-neon">Save profile details</button>
+            </div>
+          </form>
+        </section>
       </section>
 
-      <section class="panel">
-        <h2>Open Doubts</h2>
-        <div id="doubtFeed" class="feed"></div>
+      <section class="deck-section" data-section="settings">
+        <section class="panel">
+          <h2>Preferences &amp; Notifications</h2>
+          <p class="panel-help">Choose how AuraLog looks and what updates ping you on this device.</p>
+          <form id="settingsForm" autocomplete="off">
+            <div class="row">
+              <label class="field small">
+                <select name="theme">
+                  <option value="default">Default</option>
+                  <option value="dark">Dark</option>
+                  <option value="neon">Neon</option>
+                  <option value="aurora">Aurora</option>
+                  <option value="void">Void</option>
+                  <option value="sunset">Sunset</option>
+                </select>
+                <span class="label small">Theme</span>
+              </label>
+              <label class="field small">
+                <select name="code_theme">
+                  <option value="monokai">Monokai</option>
+                  <option value="github">GitHub</option>
+                  <option value="dracula">Dracula</option>
+                </select>
+                <span class="label small">Code theme</span>
+              </label>
+            </div>
+            <div class="checkbox-grid">
+              <label class="checkbox">
+                <input name="public_profile" type="checkbox" />
+                <span>Public profile page</span>
+              </label>
+              <label class="checkbox">
+                <input name="email_visible" type="checkbox" />
+                <span>Show email publicly</span>
+              </label>
+            </div>
+            <div class="notify-group">
+              <span class="notify-title">Notifications</span>
+              <div class="notify-options">
+                <label class="checkbox">
+                  <input name="notify_progress" type="checkbox" />
+                  <span>Progress digests</span>
+                </label>
+                <label class="checkbox">
+                  <input name="notify_projects" type="checkbox" />
+                  <span>New projects</span>
+                </label>
+                <label class="checkbox">
+                  <input name="notify_doubts" type="checkbox" />
+                  <span>Doubt replies</span>
+                </label>
+              </div>
+            </div>
+            <div class="row">
+              <button type="submit" class="btn-neon">Save preferences</button>
+            </div>
+          </form>
+        </section>
+      </section>
+
+      <section class="deck-section" data-section="about">
+        <section class="panel">
+          <h2>About AuraLog</h2>
+          <p class="panel-help">AuraLog blends registration, project tracking, and mentor collaboration into one nebula-inspired workspace.</p>
+          <p>Inside Mission Control you can:</p>
+          <ul class="info-list">
+            <li>Publish projects with AI-backed summaries and snippet highlights.</li>
+            <li>Log daily progress, blockers, and errors so mentors spot patterns fast.</li>
+            <li>Surface doubts and review threaded responses from peers or AuraLog AI.</li>
+            <li>Curate a lightweight profile that travels with your device token.</li>
+          </ul>
+          <p>Every panel is tuned for low-friction updates so your team stays future-ready.</p>
+        </section>
+      </section>
+
+      <section class="deck-section" data-section="help">
+        <section class="panel">
+          <h2>Need Help?</h2>
+          <p class="panel-help">Quick tips for staying in sync and unlocking the full dashboard.</p>
+          <ol class="info-list">
+            <li>Use the Projects tab to share builds; attach at least one snippet for richer AI context.</li>
+            <li>Drop progress updates daily — blockers flagged here fuel mentor outreach.</li>
+            <li>Hold on to the device token shown in Profile; it authenticates future edits.</li>
+            <li>Switch themes under Settings to match your workspace lighting and mood.</li>
+            <li>If something misbehaves, ping <a href="mailto:support@auralog.com">support@auralog.com</a> with steps to reproduce.</li>
+          </ol>
+          <p>Still unsure? Toggle back to the About tab or explore the README for deployment and API docs.</p>
+        </section>
       </section>
     </main>
 

@@ -1,9 +1,14 @@
-"""Flask backend with SQLAlchemy ORM, Argon2 hashing, and migration support."""
+"""AuraLog backend with AI-assisted project collaboration."""
 
 from __future__ import annotations
 
+import json
 import os
+import re
 from datetime import datetime, timezone
+from typing import Any, Dict, List
+from urllib import request as urlrequest
+from urllib.error import URLError, HTTPError
 from uuid import uuid4
 
 from argon2 import PasswordHasher
@@ -43,6 +48,11 @@ migrate = Migrate(app, db)
 password_hasher = PasswordHasher()
 
 
+ALLOWED_THEMES = {'default', 'dark', 'neon'}
+ALLOWED_CODE_THEMES = {'monokai', 'github', 'dracula'}
+ALLOWED_PROJECT_VISIBILITY = {'public', 'private', 'unlisted'}
+
+
 class User(db.Model):
     __tablename__ = 'users'
 
@@ -54,8 +64,24 @@ class User(db.Model):
     password_hash = db.Column(db.String(300), nullable=False)
     role = db.Column(db.String(80))
     bio = db.Column(db.Text)
+    avatar = db.Column(db.String(400))
+    github = db.Column(db.String(300))
+    linkedin = db.Column(db.String(300))
+    website = db.Column(db.String(400))
+    public_profile = db.Column(db.Boolean, nullable=False, default=True)
+    email_visible = db.Column(db.Boolean, nullable=False, default=False)
+    theme = db.Column(db.String(64), nullable=True)
+    code_theme = db.Column(db.String(64), nullable=True)
+    notifications = db.Column(db.Text, nullable=True)
+    deleted = db.Column(db.Boolean, nullable=False, default=False)
 
     def to_dict(self) -> dict:
+        try:
+            notifications = json.loads(self.notifications) if self.notifications else {}
+            if not isinstance(notifications, dict):
+                notifications = {}
+        except (TypeError, ValueError):
+            notifications = {}
         return {
             'id': self.id,
             'timestamp': self.timestamp,
@@ -64,6 +90,16 @@ class User(db.Model):
             'email': self.email,
             'role': self.role,
             'bio': self.bio,
+            'avatar': self.avatar,
+            'github': self.github,
+            'linkedin': self.linkedin,
+            'website': self.website,
+            'public_profile': bool(self.public_profile),
+            'email_visible': bool(self.email_visible),
+            'theme': self.theme,
+            'code_theme': self.code_theme,
+            'notifications': notifications,
+            'deleted': bool(self.deleted),
         }
 
 
@@ -113,10 +149,171 @@ class Doubt(db.Model):
         }
 
 
+class DoubtResponse(db.Model):
+    __tablename__ = 'doubt_responses'
+
+    id = db.Column(db.Integer, primary_key=True)
+    doubt_id = db.Column(db.Integer, db.ForeignKey('doubts.id'), nullable=False)
+    created_at = db.Column(db.String(64), nullable=False)
+    responder = db.Column(db.String(120), nullable=False)
+    message = db.Column(db.Text, nullable=False)
+    is_ai = db.Column(db.Boolean, default=False, nullable=False)
+
+    doubt = db.relationship('Doubt', backref=db.backref('responses', lazy='joined', cascade='all, delete-orphan'))
+
+    def to_dict(self) -> dict:
+        return {
+            'id': self.id,
+            'doubt_id': self.doubt_id,
+            'created_at': self.created_at,
+            'responder': self.responder,
+            'message': self.message,
+            'is_ai': self.is_ai,
+        }
+
+
+class Project(db.Model):
+    __tablename__ = 'projects'
+
+    id = db.Column(db.String(36), primary_key=True)
+    created_at = db.Column(db.String(64), nullable=False)
+    updated_at = db.Column(db.String(64), nullable=False)
+    owner = db.Column(db.String(120), nullable=False)
+    title = db.Column(db.String(200), nullable=False)
+    summary = db.Column(db.String(280), nullable=True)
+    description = db.Column(db.Text, nullable=False)
+    repo_url = db.Column(db.String(400), nullable=True)
+    tags = db.Column(db.Text, nullable=True)
+    ai_summary = db.Column(db.Text, nullable=True)
+    visibility = db.Column(db.String(32), nullable=False, default='public')
+    metadata_json = db.Column('metadata', db.Text, nullable=True)
+
+    @property
+    def metadata_dict(self) -> Dict[str, Any]:
+        try:
+            metadata = json.loads(self.metadata_json) if self.metadata_json else {}
+            if not isinstance(metadata, dict):
+                return {}
+            return metadata
+        except (TypeError, ValueError):
+            return {}
+
+    def to_dict(self) -> dict:
+        metadata = self.metadata_dict
+        return {
+            'id': self.id,
+            'created_at': self.created_at,
+            'updated_at': self.updated_at,
+            'owner': self.owner,
+            'title': self.title,
+            'summary': self.summary,
+            'description': self.description,
+            'repo_url': self.repo_url,
+            'tags': json.loads(self.tags) if self.tags else [],
+            'ai_summary': self.ai_summary,
+            'visibility': self.visibility or 'public',
+            'metadata': metadata,
+            'snippets': [snippet.to_dict() for snippet in getattr(self, 'snippets', [])],
+        }
+
+
+class ProjectSnippet(db.Model):
+    __tablename__ = 'project_snippets'
+
+    id = db.Column(db.Integer, primary_key=True)
+    project_id = db.Column(db.String(36), db.ForeignKey('projects.id'), nullable=False)
+    language = db.Column(db.String(64), nullable=True)
+    title = db.Column(db.String(200), nullable=True)
+    code = db.Column(db.Text, nullable=False)
+    notes = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.String(64), nullable=False)
+
+    project = db.relationship('Project', backref=db.backref('snippets', lazy='joined', cascade='all, delete-orphan'))
+
+    def to_dict(self) -> dict:
+        return {
+            'id': self.id,
+            'project_id': self.project_id,
+            'language': self.language,
+            'title': self.title,
+            'code': self.code,
+            'notes': self.notes,
+            'created_at': self.created_at,
+        }
+
+
 def init_db() -> None:
     """Create all tables (for developer convenience)."""
     with app.app_context():
         db.create_all()
+
+
+def _call_openai(prompt: str) -> str | None:
+    api_key = os.environ.get('AURALOG_OPENAI_API_KEY')
+    if not api_key:
+        return None
+
+    model = os.environ.get('AURALOG_OPENAI_MODEL', 'gpt-4o-mini')
+    payload = json.dumps({
+        'model': model,
+        'input': prompt,
+    }).encode('utf-8')
+
+    req = urlrequest.Request(
+        'https://api.openai.com/v1/responses',
+        data=payload,
+        headers={
+            'Authorization': f'Bearer {api_key}',
+            'Content-Type': 'application/json',
+        },
+        method='POST',
+    )
+    try:
+        with urlrequest.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read().decode('utf-8'))
+            output = data.get('output') or data.get('choices')
+            if isinstance(output, list) and output:
+                # Response schema may differ depending on endpoint
+                item = output[0]
+                if isinstance(item, dict):
+                    return item.get('content') or item.get('text')
+                if isinstance(item, str):
+                    return item
+            if isinstance(data, dict):
+                return data.get('content') or data.get('text')
+    except (HTTPError, URLError, TimeoutError, ValueError) as exc:
+        app.logger.warning('OpenAI request failed: %s', exc)
+    return None
+
+
+def extract_keywords(text: str, limit: int = 10) -> List[str]:
+    words = re.findall(r"[A-Za-z][A-Za-z0-9_#+-]{2,}", text.lower())
+    stopwords = {
+        'the', 'and', 'this', 'that', 'with', 'have', 'from', 'there', 'about',
+        'your', 'project', 'code', 'into', 'using', 'when', 'also', 'into', 'does',
+    }
+    freq: dict[str, int] = {}
+    for word in words:
+        if word in stopwords:
+            continue
+        freq[word] = freq.get(word, 0) + 1
+    ranked = sorted(freq.items(), key=lambda item: item[1], reverse=True)
+    return [word for word, _count in ranked[:limit]]
+
+
+def generate_project_summary(title: str, description: str, code: str | None) -> tuple[str, List[str]]:
+    base_text = f"Title: {title}\nDescription: {description}\nCode:\n{code}\n" if code else f"Title: {title}\nDescription: {description}"
+    ai_result = _call_openai(
+        "Summarise this coding project in 2 sentences and list up to five bullet keywords: " + base_text
+    )
+    if ai_result:
+        extracted_tags = extract_keywords(ai_result)
+        return ai_result.strip(), extracted_tags
+
+    short_desc = description.strip().split('\n')[0][:220]
+    summary = f"{title.strip()}: {short_desc}" if short_desc else title.strip()
+    fallback_tags = extract_keywords(description + '\n' + (code or ''))
+    return summary, fallback_tags
 
 
 @app.route('/')
@@ -162,6 +359,11 @@ def register():
             password_hash=hashed_pw,
             role=payload.get('role', ''),
             bio=payload.get('bio', ''),
+            theme='default',
+            code_theme='monokai',
+            public_profile=True,
+            email_visible=False,
+            notifications=json.dumps({'progress': True, 'doubts': True, 'projects': True}),
         )
         db.session.add(user)
         db.session.commit()
@@ -173,6 +375,111 @@ def register():
         return jsonify(success=False, error='Could not save registration'), 500
 
     return jsonify(success=True, id=rid)
+
+
+@app.get('/api/profile/<string:username>')
+def get_profile(username: str):
+    user = User.query.filter_by(username=username, deleted=False).first()
+    if user is None:
+        return jsonify(success=False, error='User not found'), 404
+
+    token = request.args.get('token') or request.headers.get('X-Auralog-Token')
+    if not token and request.headers.get('Authorization', '').startswith('Token '):
+        token = request.headers.get('Authorization', '').split(' ', 1)[1].strip()
+
+    is_owner = token == user.id
+
+    # Respect public profile flag unless owner is requesting
+    if not user.public_profile and not is_owner:
+        return jsonify(success=False, error='Profile is private'), 403
+
+    data = user.to_dict()
+    # redact sensitive details for public views
+    if not is_owner and not user.email_visible:
+        data['email'] = None
+    if not is_owner:
+        data.pop('notifications', None)
+        data.pop('deleted', None)
+    # never expose password hash
+    data.pop('password_hash', None)
+    return jsonify(success=True, profile=data)
+
+
+@app.post('/api/profile/<string:username>')
+def update_profile(username: str):
+    payload = request.get_json(silent=True) or {}
+    token = payload.get('token') or ''
+    updates = payload.get('updates') or {}
+
+    user = User.query.filter_by(username=username, deleted=False).first()
+    if user is None:
+        return jsonify(success=False, error='User not found'), 404
+
+    # Simple owner check: require token equal to user.id (returned at registration)
+    if not token or token != user.id:
+        return jsonify(success=False, error='Unauthorized'), 403
+
+    # allow a small set of fields to be updated
+    allowed = {
+        'fullName', 'bio', 'avatar', 'github', 'linkedin', 'website',
+        'public_profile', 'email_visible', 'theme', 'code_theme', 'notifications'
+    }
+    bool_fields = {'public_profile', 'email_visible'}
+    changed = False
+    for key, val in updates.items():
+        if key in allowed:
+            if key in bool_fields:
+                setattr(user, key, bool(val))
+                changed = True
+                continue
+
+            if key == 'notifications':
+                notifications_payload: Dict[str, Any]
+                if isinstance(val, dict):
+                    notifications_payload = {str(k): bool(v) for k, v in val.items()}
+                elif isinstance(val, list):
+                    notifications_payload = {str(item): True for item in val}
+                else:
+                    continue
+                user.notifications = json.dumps(notifications_payload)
+                changed = True
+                continue
+
+            if key == 'theme':
+                theme_value = str(val).strip().lower() if val is not None else 'default'
+                if theme_value not in ALLOWED_THEMES:
+                    theme_value = 'default'
+                user.theme = theme_value
+                changed = True
+                continue
+
+            if key == 'code_theme':
+                code_theme_value = str(val).strip().lower() if val is not None else 'monokai'
+                if code_theme_value not in ALLOWED_CODE_THEMES:
+                    code_theme_value = 'monokai'
+                user.code_theme = code_theme_value
+                changed = True
+                continue
+
+            if val is None:
+                setattr(user, key, None)
+            else:
+                text_value = str(val).strip()
+                setattr(user, key, text_value or None)
+            changed = True
+
+    if not changed:
+        return jsonify(success=False, error='No valid fields to update'), 400
+
+    try:
+        db.session.add(user)
+        db.session.commit()
+        data = user.to_dict()
+        data.pop('password_hash', None)
+        return jsonify(success=True, profile=data)
+    except Exception:
+        db.session.rollback()
+        return jsonify(success=False, error='Could not update profile'), 500
 
 
 @app.get('/api/progress')
@@ -228,7 +535,7 @@ def create_progress():
 @app.get('/api/doubts')
 def get_doubts():
     entries = Doubt.query.order_by(Doubt.created_at.desc()).all()
-    return jsonify(success=True, items=[entry.to_dict() for entry in entries])
+    return jsonify(success=True, items=[entry.to_dict() | {'responses': [resp.to_dict() for resp in entry.responses]} for entry in entries])
 
 
 @app.post('/api/doubts')
@@ -257,6 +564,184 @@ def create_doubt():
     except Exception:
         db.session.rollback()
         return jsonify(success=False, error='Could not submit question'), 500
+
+
+@app.post('/api/doubts/<int:doubt_id>/responses')
+def create_doubt_response(doubt_id: int):
+    payload = request.get_json(silent=True) or {}
+    responder = (payload.get('responder') or '').strip()
+    message = (payload.get('message') or '').strip()
+    is_ai = bool(payload.get('is_ai'))
+
+    if not responder or not message:
+        return jsonify(success=False, error='Missing responder or message'), 400
+
+    if Doubt.query.get(doubt_id) is None:
+        return jsonify(success=False, error='Doubt not found'), 404
+
+    created_at = datetime.now(timezone.utc).isoformat()
+
+    try:
+        response = DoubtResponse(
+            doubt_id=doubt_id,
+            created_at=created_at,
+            responder=responder,
+            message=message,
+            is_ai=is_ai,
+        )
+        db.session.add(response)
+        db.session.commit()
+        return jsonify(success=True, item=response.to_dict())
+    except Exception:
+        db.session.rollback()
+        return jsonify(success=False, error='Could not save response'), 500
+
+
+@app.get('/api/projects')
+def list_projects():
+    projects = (
+        Project.query.filter_by(visibility='public')
+        .order_by(Project.created_at.desc())
+        .all()
+    )
+    return jsonify(success=True, items=[project.to_dict() for project in projects])
+
+
+@app.post('/api/projects')
+def create_project():
+    payload = request.get_json(silent=True) or {}
+    title = (payload.get('title') or '').strip()
+    description = (payload.get('description') or '').strip()
+    owner = (payload.get('owner') or '').strip() or 'anonymous'
+    summary = (payload.get('summary') or '').strip()
+    repo_url = (payload.get('repo_url') or '').strip()
+    code = payload.get('code') or ''
+    language = (payload.get('language') or '').strip() or None
+    snippet_title = (payload.get('snippet_title') or '').strip() or None
+    snippet_notes = (payload.get('snippet_notes') or '').strip() or None
+    provided_tags = payload.get('tags')
+    visibility = (payload.get('visibility') or 'public').strip().lower()
+    metadata_payload = payload.get('metadata')
+
+    if not title or not description:
+        return jsonify(success=False, error='Title and description are required'), 400
+
+    now = datetime.now(timezone.utc).isoformat()
+    pid = f"proj-{uuid4().hex[:10]}"
+
+    if visibility not in ALLOWED_PROJECT_VISIBILITY:
+        visibility = 'public'
+
+    try:
+        ai_summary, ai_tags = generate_project_summary(title, description, code)
+    except Exception as exc:
+        app.logger.warning('Failed to generate AI summary: %s', exc)
+        ai_summary, ai_tags = summary or '', []
+
+    tags: List[str]
+    if isinstance(provided_tags, list):
+        tags = [str(tag).strip() for tag in provided_tags if str(tag).strip()]
+    elif isinstance(provided_tags, str) and provided_tags.strip():
+        tags = [tag.strip() for tag in provided_tags.split(',') if tag.strip()]
+    else:
+        tags = []
+
+    if not tags:
+        tags = ai_tags
+
+    metadata_dict: Dict[str, Any] = {}
+    if isinstance(metadata_payload, dict):
+        metadata_dict = {str(k): v for k, v in metadata_payload.items()}
+    elif isinstance(metadata_payload, str) and metadata_payload.strip():
+        try:
+            loaded = json.loads(metadata_payload)
+            if isinstance(loaded, dict):
+                metadata_dict = loaded
+        except ValueError:
+            metadata_dict = {'notes': metadata_payload.strip()}
+
+    if repo_url and 'repo_url' not in metadata_dict:
+        metadata_dict['repo_url'] = repo_url
+    if language and 'primary_language' not in metadata_dict:
+        metadata_dict['primary_language'] = language
+    metadata_dict.setdefault('snippet_count', 0)
+
+    try:
+        project = Project(
+            id=pid,
+            created_at=now,
+            updated_at=now,
+            owner=owner,
+            title=title,
+            summary=summary or ai_summary,
+            description=description,
+            repo_url=repo_url,
+            tags=json.dumps(tags),
+            ai_summary=ai_summary,
+            visibility=visibility,
+            metadata_json=json.dumps(metadata_dict) if metadata_dict else None,
+        )
+        db.session.add(project)
+        db.session.flush()
+
+        if code.strip():
+            snippet = ProjectSnippet(
+                project_id=pid,
+                language=language,
+                title=snippet_title,
+                code=code,
+                notes=snippet_notes,
+                created_at=now,
+            )
+            db.session.add(snippet)
+
+        metadata_dict['snippet_count'] = len(getattr(project, 'snippets', []))
+        project.metadata_json = json.dumps(metadata_dict)
+
+        db.session.commit()
+        return jsonify(success=True, item=project.to_dict())
+    except Exception as exc:
+        db.session.rollback()
+        app.logger.error('Failed to create project: %s', exc)
+        return jsonify(success=False, error='Could not save project'), 500
+
+
+@app.post('/api/projects/<project_id>/snippets')
+def add_project_snippet(project_id: str):
+    project = Project.query.get(project_id)
+    if project is None:
+        return jsonify(success=False, error='Project not found'), 404
+
+    payload = request.get_json(silent=True) or {}
+    code = (payload.get('code') or '').strip()
+    if not code:
+        return jsonify(success=False, error='Code is required'), 400
+
+    language = (payload.get('language') or '').strip() or None
+    title = (payload.get('title') or '').strip() or None
+    notes = (payload.get('notes') or '').strip() or None
+    now = datetime.now(timezone.utc).isoformat()
+
+    try:
+        snippet = ProjectSnippet(
+            project_id=project_id,
+            language=language,
+            title=title,
+            code=code,
+            notes=notes,
+            created_at=now,
+        )
+        db.session.add(snippet)
+        project.updated_at = now
+        metadata_dict = project.metadata_dict
+        metadata_dict['snippet_count'] = len(getattr(project, 'snippets', []))
+        project.metadata_json = json.dumps(metadata_dict)
+        db.session.commit()
+        return jsonify(success=True, item=snippet.to_dict())
+    except Exception as exc:
+        db.session.rollback()
+        app.logger.error('Failed to add snippet: %s', exc)
+        return jsonify(success=False, error='Could not save snippet'), 500
 
 
 if __name__ == '__main__':
