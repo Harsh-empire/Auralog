@@ -139,7 +139,15 @@
   }
 
   function syncProfilePhotos(){
-    persistProfile({...((savedProfile || {})), photos: profilePhotos.slice(0,12)});
+    profilePhotos = profilePhotos.slice(0,12).map((item)=>String(item));
+    const base = savedProfile ? {...savedProfile} : {};
+    base.photos = profilePhotos.slice(0,12);
+    savedProfile = base;
+    try{
+      localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(savedProfile));
+      if(savedProfile.theme){ localStorage.setItem(THEME_STORAGE_KEY, savedProfile.theme); }
+      if(savedProfile.code_theme){ localStorage.setItem(CODE_THEME_STORAGE_KEY, savedProfile.code_theme); }
+    }catch(err){ /* ignore */ }
   }
 
   function renderStatList(container, items){
@@ -908,12 +916,12 @@
     });
     if(settingsForm.elements.theme){
       settingsForm.elements.theme.addEventListener('change', (ev)=>{
-        applyTheme(ev.target.value, false);
+        applyTheme(ev.target.value);
       });
     }
     if(settingsForm.elements.code_theme){
       settingsForm.elements.code_theme.addEventListener('change', (ev)=>{
-        applyCodeTheme(ev.target.value, false);
+        applyCodeTheme(ev.target.value);
       });
     }
   }
