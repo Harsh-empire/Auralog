@@ -5,6 +5,7 @@
   const DASH_SECTION_KEY = 'futurereg-active-section';
   const THEMES = ['default', 'dark', 'neon', 'aurora', 'void', 'sunset'];
   const CODE_THEMES = ['monokai', 'github', 'dracula'];
+  const INSIGHT_CACHE_MS = 2 * 60 * 1000; // two minutes
 
   const progressFeed = document.getElementById('progressFeed');
   const projectFeed = document.getElementById('projectFeed');
@@ -14,11 +15,34 @@
   const profileTokenHint = document.getElementById('profileTokenHint');
   const profileForm = document.getElementById('profileForm');
   const settingsForm = document.getElementById('settingsForm');
+  const profilePhotoForm = document.getElementById('profilePhotoForm');
+  const profilePhotoGallery = document.getElementById('profilePhotoGallery');
+  const clearPhotosBtn = document.getElementById('clearProfilePhotos');
   const progressForm = document.getElementById('progressForm');
   const projectForm = document.getElementById('projectForm');
   const doubtForm = document.getElementById('doubtForm');
   const deckTabs = document.querySelectorAll('.dashboard-tab');
   const deckSections = document.querySelectorAll('.deck-section');
+  const insightHero = document.getElementById('insightHero');
+  const insightHeadline = document.getElementById('insightHeadline');
+  const insightDetail = document.getElementById('insightDetail');
+  const insightActions = document.getElementById('insightActions');
+  const insightMomentum = document.getElementById('insightMomentum');
+  const insightCompletion = document.getElementById('insightCompletion');
+  const insightResolution = document.getElementById('insightResolution');
+  const insightTrending = document.getElementById('insightTrending');
+  const insightGenerated = document.getElementById('insightGenerated');
+  const insightModel = document.getElementById('insightModel');
+  const progressSummaryList = document.getElementById('progressSummary');
+  const doubtSummaryList = document.getElementById('doubtSummary');
+  const projectSummaryList = document.getElementById('projectSummary');
+  const insightTimeline = document.getElementById('insightTimeline');
+  const refreshInsightsBtn = document.getElementById('refreshInsights');
+
+  let insightSnapshot = null;
+  let insightSnapshotTs = 0;
+  let insightLoading = false;
+  let profilePhotos = [];
 
   function activateSection(targetId, animate = true){
     if(!deckSections.length) return;
@@ -52,6 +76,259 @@
     try{
       localStorage.setItem(DASH_SECTION_KEY, resolvedId);
     }catch(err){ /* ignore storage issues */ }
+
+    if(resolvedId === 'insights'){
+      loadInsights(false);
+    }
+  }
+
+  function setInsightState(state){
+    if(!insightHero) return;
+    insightHero.dataset.state = state;
+  }
+
+  function applyChipTone(element, label, textValue, tone){
+    if(!element) return;
+    element.textContent = `${label}: ${textValue}`;
+    if(tone){
+      element.dataset.tone = tone;
+    }else{
+      element.removeAttribute('data-tone');
+    }
+  }
+
+  function formatPercent(value){
+    if(typeof value !== 'number' || Number.isNaN(value)) return '0%';
+    return `${Math.round(value * 100)}%`;
+  }
+
+  function formatRelativeTime(value){
+    if(!value) return 'Updated moments ago';
+    try{
+    const stamp = new Date(value);
+    if(Number.isNaN(stamp.getTime())) return 'Updated moments ago';
+    const diffMs = Date.now() - stamp.getTime();
+    if(diffMs < 0) return 'Updated moments ago';
+      if(diffMs < 45_000) return 'Updated just now';
+      if(diffMs < 90_000) return 'Updated about a minute ago';
+      const diffMinutes = Math.round(diffMs / 60_000);
+      if(diffMinutes < 60) return `Updated ${diffMinutes}m ago`;
+      const diffHours = Math.round(diffMinutes / 60);
+      if(diffHours < 24) return `Updated ${diffHours}h ago`;
+      return `Updated ${stamp.toLocaleDateString()} ${stamp.toLocaleTimeString()}`;
+    }catch(err){
+      return 'Updated moments ago';
+    }
+  }
+
+  function formatModelLabel(tag){
+    if(!tag) return 'Model: heuristics';
+    if(tag === 'heuristics+optional-openai') return 'Model: heuristics + OpenAI (optional)';
+    return `Model: ${tag}`;
+  }
+
+  function sanitizePhotoUrl(value){
+    if(typeof value !== 'string') return '';
+    let url = value.trim();
+    if(!url) return '';
+    if(url.startsWith('data:image/')) return url;
+    if(/^https?:\/\//i.test(url)) return url;
+    if(url.startsWith('//')) return `https:${url}`;
+    if(!url.includes('://')) return `https://${url}`;
+    return url;
+  }
+
+  function syncProfilePhotos(){
+    persistProfile({...((savedProfile || {})), photos: profilePhotos.slice(0,12)});
+  }
+
+  function renderStatList(container, items){
+    if(!container) return;
+    container.innerHTML = '';
+    items.forEach(({label, value})=>{
+      if(value === undefined || value === null) return;
+      const dt = document.createElement('dt');
+      dt.textContent = label;
+      const dd = document.createElement('dd');
+      dd.textContent = value;
+      container.appendChild(dt);
+      container.appendChild(dd);
+    });
+  }
+
+  function renderTimeline(events){
+    if(!insightTimeline) return;
+    insightTimeline.innerHTML = '';
+    if(!events || !events.length){
+      const empty = document.createElement('div');
+      empty.className = 'timeline-event';
+      empty.textContent = 'No recent highlights yet. Share progress and publish projects to populate this view.';
+      insightTimeline.appendChild(empty);
+      return;
+    }
+    events.forEach((item)=>{
+      const block = document.createElement('div');
+      block.className = 'timeline-event';
+      const title = document.createElement('strong');
+      title.textContent = item.title || 'Untitled milestone';
+      const meta = document.createElement('span');
+      const when = item.created_at ? new Date(item.created_at).toLocaleString() : 'unknown time';
+      meta.textContent = `${item.username ? '@'+item.username+' • ' : ''}${item.status || item.visibility || 'update'} • ${when}`;
+      block.appendChild(title);
+      block.appendChild(meta);
+      insightTimeline.appendChild(block);
+    });
+  }
+
+  function renderProfileGallery(){
+    if(!profilePhotoGallery) return;
+    profilePhotoGallery.innerHTML = '';
+    if(!profilePhotos || !profilePhotos.length){
+      profilePhotoGallery.classList.remove('has-items');
+      return;
+    }
+    profilePhotoGallery.classList.add('has-items');
+    profilePhotos.forEach((url, index)=>{
+      const item = document.createElement('div');
+      item.className = 'profile-gallery-item';
+      const img = document.createElement('img');
+      img.src = url;
+      img.alt = `Profile gallery image ${index + 1}`;
+      img.loading = 'lazy';
+      const removeBtn = document.createElement('button');
+      removeBtn.type = 'button';
+      removeBtn.dataset.index = String(index);
+      removeBtn.textContent = 'Remove';
+      item.appendChild(img);
+      item.appendChild(removeBtn);
+      profilePhotoGallery.appendChild(item);
+    });
+  }
+
+  function renderInsightActions(actions){
+    if(!insightActions) return;
+    insightActions.innerHTML = '';
+    if(!actions || !actions.length) return;
+    actions.forEach((action)=>{
+      const li = document.createElement('li');
+      li.textContent = action;
+      insightActions.appendChild(li);
+    });
+  }
+
+  function renderInsights(snapshot){
+    if(!snapshot) return;
+    setInsightState('ready');
+
+    const summary = snapshot.summary || {};
+    const doubts = snapshot.doubts || {};
+    const projects = snapshot.projects || {};
+    const focus = snapshot.focus || {};
+
+    if(insightHeadline){
+      insightHeadline.textContent = focus.headline || 'Mission momentum stable';
+    }
+    if(insightDetail){
+      insightDetail.textContent = snapshot.recommendation || focus.detail || 'Stay consistent with daily check-ins.';
+    }
+
+    renderInsightActions(focus.actions);
+
+    const completionRatio = typeof summary.completion_ratio === 'number' ? summary.completion_ratio : 0;
+    const resolutionRate = typeof doubts.resolution_rate === 'number' ? doubts.resolution_rate : 0;
+    const momentumScore = typeof summary.momentum_score === 'number' ? summary.momentum_score : 0;
+    const progressTotal = summary.progress_total || 0;
+
+    const highMomentumThreshold = Math.max(progressTotal * 1.1, 5);
+    const lowMomentumThreshold = Math.max(progressTotal * 0.25, 1);
+    const completionTone = completionRatio >= 0.6 ? 'boost' : completionRatio < 0.25 ? 'alert' : 'steady';
+    const resolutionTone = resolutionRate >= 0.7 ? 'boost' : resolutionRate < 0.3 ? 'alert' : 'steady';
+    const momentumTone = momentumScore >= highMomentumThreshold ? 'boost' : momentumScore <= lowMomentumThreshold ? 'alert' : 'steady';
+
+    applyChipTone(insightMomentum, 'Momentum', momentumScore.toFixed(1), momentumTone);
+    applyChipTone(insightCompletion, 'Completion', formatPercent(completionRatio), completionTone);
+    applyChipTone(insightResolution, 'Resolution', formatPercent(resolutionRate), resolutionTone);
+
+    if(insightTrending){
+      const trendingList = snapshot.trending && snapshot.trending.length ? snapshot.trending.slice(0, 4).map((tag)=>`#${tag}`) : [];
+      const text = trendingList.length ? `Trending: ${trendingList.join(' · ')}` : 'Trending: awaiting more signals';
+      insightTrending.textContent = text;
+    }
+
+    if(insightGenerated){
+      insightGenerated.textContent = formatRelativeTime(snapshot.generated_at);
+    }
+
+    if(insightModel){
+      insightModel.textContent = formatModelLabel(snapshot.hybrid_model);
+    }
+
+    renderStatList(progressSummaryList, [
+      {label: 'Total updates', value: summary.progress_total},
+      {label: 'Complete', value: summary.progress_complete},
+      {label: 'Blocked', value: summary.progress_blocked},
+      {label: 'Needs review', value: summary.progress_needs_review},
+      {label: 'Velocity (7d)', value: summary.velocity && summary.velocity.last_7d},
+      {label: 'Velocity (24h)', value: summary.velocity && summary.velocity.last_24h},
+      {label: 'Avg age (h)', value: summary.average_age_hours},
+    ]);
+
+    renderStatList(doubtSummaryList, [
+      {label: 'Open doubts', value: doubts.open},
+      {label: 'Resolved', value: doubts.resolved},
+      {label: 'Total', value: doubts.total},
+      {label: 'Resolution rate', value: formatPercent(resolutionRate)},
+    ]);
+
+    const visibility = projects.visibility || {};
+    renderStatList(projectSummaryList, [
+      {label: 'Projects', value: projects.total},
+      {label: 'Public', value: visibility.public || 0},
+      {label: 'Private', value: visibility.private || 0},
+      {label: 'Unlisted', value: visibility.unlisted || 0},
+      {label: 'Snippets', value: projects.snippet_count || 0},
+      {label: 'Top tags', value: (projects.tag_leaders || []).slice(0,3).map((item)=>`#${item.tag}`).join(' ')}
+    ]);
+
+    renderTimeline(snapshot.timeline);
+  }
+
+  async function loadInsights(forceRefresh=false){
+    if(!insightHero || insightLoading) return;
+    const nowTs = Date.now();
+    const cacheFresh = !forceRefresh && insightSnapshot && (nowTs - insightSnapshotTs) < INSIGHT_CACHE_MS;
+    if(cacheFresh){
+      renderInsights(insightSnapshot);
+      return;
+    }
+
+    insightLoading = true;
+    setInsightState('loading');
+    if(insightHeadline){ insightHeadline.textContent = 'Synthesising mission insights…'; }
+    if(insightDetail){ insightDetail.textContent = 'AuraLog is crunching progress, project, and doubt telemetry.'; }
+    if(insightActions){ insightActions.innerHTML = ''; }
+  if(insightGenerated){ insightGenerated.textContent = 'Syncing…'; }
+  if(insightModel){ insightModel.textContent = 'Model: calibrating'; }
+
+    try{
+      const resp = await fetch(`${API_BASE}/api/insights`);
+      if(!resp.ok) throw new Error('request failed');
+      const data = await resp.json();
+      if(!data.success) throw new Error(data.error || 'insights unavailable');
+      insightSnapshot = data;
+      insightSnapshotTs = nowTs;
+      renderInsights(data);
+    }catch(err){
+      console.error(err);
+      setInsightState('error');
+      if(insightDetail){ insightDetail.textContent = 'Unable to synthesise mission insights. Try again soon.'; }
+      if(insightActions){ insightActions.innerHTML = ''; }
+      if(insightGenerated){ insightGenerated.textContent = 'Last sync failed'; }
+      if(insightModel){ insightModel.textContent = 'Model: heuristics (offline)'; }
+      showToast('Could not load mission insights', false);
+    }finally{
+      insightLoading = false;
+    }
   }
 
   function resolveApiBase(){
@@ -76,8 +353,14 @@
   function loadProfile(){
     try{
       const raw = localStorage.getItem(PROFILE_STORAGE_KEY);
-      return raw ? JSON.parse(raw) : null;
+      if(!raw) return null;
+      const parsed = JSON.parse(raw);
+      if(parsed && Array.isArray(parsed.photos)){
+        profilePhotos = parsed.photos.map((item)=>String(item)).slice(0,12);
+      }
+      return parsed;
     }catch(err){
+      profilePhotos = [];
       return null;
     }
   }
@@ -89,6 +372,12 @@
       clone = JSON.parse(JSON.stringify(profile));
     }catch(err){
       clone = {...profile};
+    }
+    if(!Array.isArray(clone.photos)){
+      clone.photos = profilePhotos.slice(0,12);
+    }else{
+      clone.photos = clone.photos.slice(0,12).map((item)=>String(item));
+      profilePhotos = clone.photos.slice(0,12);
     }
     savedProfile = clone;
     try{
@@ -189,6 +478,8 @@
       if(settingsForm.elements.notify_doubts){ settingsForm.elements.notify_doubts.checked = !!notifications.doubts; }
     }
   }
+    profilePhotos = Array.isArray(profile.photos) ? profile.photos.slice(0,12).map((item)=>String(item)) : [];
+    renderProfileGallery();
 
   function prefillUserFields(profile){
     if(!profile) return;
@@ -467,6 +758,9 @@
       const data = await resp.json();
       if(!data.success) return;
       const merged = {...savedProfile, ...data.profile, token: savedProfile.token};
+      if(Array.isArray(data.profile.photos)){
+        profilePhotos = data.profile.photos.slice(0,12).map((item)=>String(item));
+      }
       persistProfile(merged);
       hydrateProfileForm(merged);
       prefillUserFields(merged);
@@ -511,6 +805,7 @@
       projects: getCheckbox(settingsForm, 'notify_projects'),
       doubts: getCheckbox(settingsForm, 'notify_doubts')
     };
+    updates.photos = profilePhotos.slice(0,12);
 
     return updates;
   }
@@ -550,6 +845,9 @@
       const data = await resp.json();
       if(!resp.ok || !data.success) throw new Error(data.error || 'failed');
       const merged = {...(savedProfile || {}), ...data.profile, token};
+      if(Array.isArray(data.profile.photos)){
+        profilePhotos = data.profile.photos.slice(0,12).map((item)=>String(item));
+      }
       persistProfile(merged);
       hydrateProfileForm(merged);
       prefillUserFields(merged);
@@ -571,6 +869,12 @@
     }
   }catch(err){ /* ignore */ }
 
+  if(refreshInsightsBtn){
+    refreshInsightsBtn.addEventListener('click', ()=>{
+      loadInsights(true);
+    });
+  }
+
   let savedProfile = loadProfile();
   const initialTheme = (savedProfile && savedProfile.theme) || localStorage.getItem(THEME_STORAGE_KEY) || 'default';
   applyTheme(initialTheme, false);
@@ -585,6 +889,8 @@
   if(savedProfile){
     hydrateProfileForm(savedProfile);
     prefillUserFields(savedProfile);
+  }else{
+    renderProfileGallery();
   }
   updateTokenHint();
 
@@ -612,6 +918,52 @@
     }
   }
 
+  if(profilePhotoForm){
+    profilePhotoForm.addEventListener('submit', (ev)=>{
+      ev.preventDefault();
+      const input = profilePhotoForm.elements.photo_url;
+      if(!input || typeof input.value !== 'string') return;
+      const normalized = sanitizePhotoUrl(input.value);
+      if(!normalized){
+        showToast('Enter a valid image URL', false);
+        return;
+      }
+      if(profilePhotos.includes(normalized)){
+        showToast('Image already added', false);
+        return;
+      }
+      if(profilePhotos.length >= 12){
+        showToast('Gallery limit reached', false);
+        return;
+      }
+      profilePhotos.push(normalized);
+      renderProfileGallery();
+      profilePhotoForm.reset();
+      syncProfilePhotos();
+    });
+  }
+
+  if(profilePhotoGallery){
+    profilePhotoGallery.addEventListener('click', (ev)=>{
+      const target = ev.target;
+      if(!target || !(target.matches && target.matches('button[data-index]'))) return;
+      const idx = Number(target.dataset.index);
+      if(Number.isNaN(idx)) return;
+      profilePhotos.splice(idx, 1);
+      renderProfileGallery();
+      syncProfilePhotos();
+    });
+  }
+
+  if(clearPhotosBtn){
+    clearPhotosBtn.addEventListener('click', ()=>{
+      if(!profilePhotos.length) return;
+      profilePhotos = [];
+      renderProfileGallery();
+      syncProfilePhotos();
+    });
+  }
+
   if(progressForm){
     progressForm.addEventListener('submit', async (ev)=>{
       ev.preventDefault();
@@ -629,6 +981,7 @@
         prefillUserFields(savedProfile);
         showToast('Progress update shared with mentors');
         loadProgress();
+        loadInsights(true);
       }catch(err){
         console.error(err);
         showToast('Could not save progress update', false);
@@ -653,6 +1006,7 @@
         prefillUserFields(savedProfile);
         showToast('Question submitted for review');
         loadDoubts();
+        loadInsights(true);
       }catch(err){
         console.error(err);
         showToast('Could not submit question', false);
@@ -680,6 +1034,7 @@
         prefillUserFields(savedProfile);
         showToast('Project published to the AuraLog library');
         loadProjects();
+        loadInsights(true);
       }catch(err){
         console.error(err);
         showToast('Could not publish project', false);
@@ -690,5 +1045,6 @@
   loadProgress();
   loadDoubts();
   loadProjects();
+  loadInsights(false);
   refreshProfileFromServer();
 })();

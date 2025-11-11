@@ -36,6 +36,7 @@
         <button class="dashboard-tab" type="button" data-target="activity">Activity</button>
         <button class="dashboard-tab" type="button" data-target="profile">Profile</button>
         <button class="dashboard-tab" type="button" data-target="settings">Settings</button>
+    <button class="dashboard-tab" type="button" data-target="insights">Insights</button>
         <button class="dashboard-tab" type="button" data-target="about">About</button>
         <button class="dashboard-tab" type="button" data-target="help">Help</button>
       </nav>
@@ -181,7 +182,75 @@
         </section>
       </section>
 
+      <section class="deck-section" data-section="insights">
+        <section class="panel">
+          <h2>Mission Insights</h2>
+          <p class="panel-help">Hybrid heuristics + AI distil the latest project, progress, and doubt telemetry into action items.</p>
+          <div id="insightHero" class="insight-hero">
+            <div class="insight-glow"></div>
+            <div class="insight-content">
+              <h3 id="insightHeadline">Gathering nebula data…</h3>
+              <p id="insightDetail">Hang tight while AuraLog synthesizes priorities.</p>
+              <ul id="insightActions" class="insight-actions"></ul>
+              <div class="insight-meta">
+                <span id="insightMomentum" class="metric-chip">Momentum</span>
+                <span id="insightCompletion" class="metric-chip">Completion</span>
+                <span id="insightResolution" class="metric-chip">Resolution</span>
+              </div>
+              <div class="insight-trailing">
+                <div class="insight-telemetry">
+                  <span id="insightTrending" class="insight-trending">Trending: awaiting more signals</span>
+                  <span id="insightGenerated" class="insight-generated">Synced moments ago</span>
+                  <span id="insightModel" class="insight-model">Model: heuristics+AI</span>
+                </div>
+                <button id="refreshInsights" class="btn-outline btn-insight-refresh" type="button">Refresh insights</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <h2>Telemetry</h2>
+          <div class="insight-grid">
+            <div class="insight-card">
+              <h3>Progress Pulse</h3>
+              <dl id="progressSummary" class="insight-stats"></dl>
+            </div>
+            <div class="insight-card">
+              <h3>Doubt Orbit</h3>
+              <dl id="doubtSummary" class="insight-stats"></dl>
+            </div>
+            <div class="insight-card">
+              <h3>Project Signals</h3>
+              <dl id="projectSummary" class="insight-stats"></dl>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <h2>Recent Highlights</h2>
+          <div id="insightTimeline" class="timeline"></div>
+        </section>
+      </section>
+
       <section class="deck-section" data-section="profile">
+        <section class="panel profile-media">
+          <h2>Profile Media</h2>
+          <p class="panel-help">Showcase up to six highlight images on your profile card. Paste hosted image URLs below or remove shots you no longer want.</p>
+          <div id="profilePhotoGallery" class="profile-gallery" data-empty="No images yet. Add a link below to populate your gallery."></div>
+          <form id="profilePhotoForm" autocomplete="off" class="profile-photo-form">
+            <label class="field wide">
+              <input name="photo_url" type="text" inputmode="url" placeholder=" " />
+              <span class="label">Image URL</span>
+              <span class="bar"></span>
+            </label>
+            <div class="photo-actions">
+              <button type="submit" class="btn-neon">Add image</button>
+              <button id="clearProfilePhotos" type="button" class="btn-outline">Clear gallery</button>
+            </div>
+          </form>
+        </section>
+
         <section class="panel">
           <h2>Your Profile</h2>
           <p class="panel-help">Edit a lightweight public profile. Save to sync details locally and, if registered, with the AuraLog service.</p>
@@ -204,24 +273,24 @@
             </label>
             <div class="row">
               <label class="field">
-                <input name="avatar" type="url" placeholder=" " />
+                <input name="avatar" type="text" inputmode="url" placeholder=" " />
                 <span class="label">Avatar URL</span>
                 <span class="bar"></span>
               </label>
               <label class="field">
-                <input name="github" type="url" placeholder=" " />
+                <input name="github" type="text" inputmode="url" placeholder=" " />
                 <span class="label">GitHub</span>
                 <span class="bar"></span>
               </label>
             </div>
             <div class="row">
               <label class="field">
-                <input name="linkedin" type="url" placeholder=" " />
+                <input name="linkedin" type="text" inputmode="url" placeholder=" " />
                 <span class="label">LinkedIn</span>
                 <span class="bar"></span>
               </label>
               <label class="field">
-                <input name="website" type="url" placeholder=" " />
+                <input name="website" type="text" inputmode="url" placeholder=" " />
                 <span class="label">Website</span>
                 <span class="bar"></span>
               </label>

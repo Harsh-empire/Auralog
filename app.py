@@ -5,7 +5,8 @@ from __future__ import annotations
 import json
 import os
 import re
-from datetime import datetime, timezone
+from collections import Counter
+from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List
 from urllib import request as urlrequest
 from urllib.error import URLError, HTTPError
@@ -48,7 +49,7 @@ migrate = Migrate(app, db)
 password_hasher = PasswordHasher()
 
 
-ALLOWED_THEMES = {'default', 'dark', 'neon'}
+ALLOWED_THEMES = {'default', 'dark', 'neon', 'aurora', 'void', 'sunset'}
 ALLOWED_CODE_THEMES = {'monokai', 'github', 'dracula'}
 ALLOWED_PROJECT_VISIBILITY = {'public', 'private', 'unlisted'}
 
@@ -74,6 +75,7 @@ class User(db.Model):
     code_theme = db.Column(db.String(64), nullable=True)
     notifications = db.Column(db.Text, nullable=True)
     deleted = db.Column(db.Boolean, nullable=False, default=False)
+    photos_json = db.Column(db.Text, nullable=True)
 
     def to_dict(self) -> dict:
         try:
@@ -82,6 +84,14 @@ class User(db.Model):
                 notifications = {}
         except (TypeError, ValueError):
             notifications = {}
+        try:
+            photos = json.loads(self.photos_json) if self.photos_json else []
+            if not isinstance(photos, list):
+                photos = []
+            else:
+                photos = [str(item) for item in photos if str(item).strip()]
+        except (TypeError, ValueError):
+            photos = []
         return {
             'id': self.id,
             'timestamp': self.timestamp,
@@ -100,6 +110,7 @@ class User(db.Model):
             'code_theme': self.code_theme,
             'notifications': notifications,
             'deleted': bool(self.deleted),
+            'photos': photos,
         }
 
 
@@ -316,6 +327,213 @@ def generate_project_summary(title: str, description: str, code: str | None) -> 
     return summary, fallback_tags
 
 
+def _parse_iso8601(value: Any) -> datetime | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value
+    text_value = str(value)
+    try:
+        return datetime.fromisoformat(text_value)
+    except ValueError:
+        if text_value.endswith('Z'):
+            try:
+                return datetime.fromisoformat(text_value[:-1] + '+00:00')
+            except ValueError:
+                return None
+        return None
+
+
+def _build_focus_area(progress_counts: Counter, progress_total: int, blocked: int, needs_review: int,
+                      open_doubts: int, resolved_doubts: int, completion_ratio: float, momentum_score: float) -> Dict[str, Any]:
+    actions: List[str] = []
+    headline = 'Steady momentum detected'
+    detail = 'Keep cadence steady and continue logging progress to maintain visibility.'
+
+    if blocked and blocked >= max(1, int(progress_total * 0.25)):
+        headline = 'Unblock critical missions'
+        detail = 'Multiple updates report blockers. Run a triage huddle to pair mentors with stuck makers.'
+        actions = [
+            'Identify the top blockers and assign an owner for each within the next stand-up.',
+            'Schedule focused support sessions for the teams reporting blockers.',
+        ]
+    elif open_doubts > resolved_doubts:
+        headline = 'Accelerate doubt responses'
+        detail = 'Open questions are outnumbering resolved ones. Prioritise feedback loops and mentor responses.'
+        actions = [
+            'Allocate response slots for mentors to clear the pending doubts queue.',
+            'Tag recurring topics and turn them into quick-reference guides.',
+        ]
+    elif completion_ratio >= 0.6 and momentum_score >= progress_total * 0.5:
+        headline = 'Scale what works'
+        detail = 'Completion rate is strong. Double down on sharing wins and reusable snippets.'
+        actions = [
+            'Highlight recent completions in the next mission broadcast.',
+            'Encourage teams to convert finished work into playbooks or templates.',
+        ]
+    elif needs_review > (progress_total - needs_review) and progress_total:
+        headline = 'Triage review backlog'
+        detail = 'Most updates are waiting for review. Rebalance mentor load to clear the queue.'
+        actions = [
+            'Rotate reviewers or schedule a review-a-thon to drain the queue.',
+            'Document review criteria so feedback stays consistent and faster.',
+        ]
+
+    return {
+        'headline': headline,
+        'detail': detail,
+        'actions': actions,
+    }
+
+
+def _compute_mission_insights() -> Dict[str, Any]:
+    now = datetime.now(timezone.utc)
+
+    progress_entries = ProgressUpdate.query.order_by(ProgressUpdate.created_at.desc()).all()
+    progress_counts = Counter(entry.status for entry in progress_entries)
+    progress_total = len(progress_entries)
+    blocked = progress_counts.get('blocked', 0)
+    needs_review = progress_counts.get('needs-review', 0)
+    complete = progress_counts.get('complete', 0)
+    in_progress = progress_counts.get('in-progress', 0)
+
+    ages_hours: List[float] = []
+    velocity_24h = 0
+    velocity_7d = 0
+    timeline: List[Dict[str, Any]] = []
+    horizon_24h = now - timedelta(hours=24)
+    horizon_7d = now - timedelta(days=7)
+
+    for entry in progress_entries:
+        stamp = _parse_iso8601(entry.created_at)
+        if stamp is not None:
+            diff = now - stamp
+            ages_hours.append(max(diff.total_seconds() / 3600.0, 0.0))
+            if stamp >= horizon_24h:
+                velocity_24h += 1
+            if stamp >= horizon_7d:
+                velocity_7d += 1
+        if len(timeline) < 6:
+            timeline.append({
+                'id': entry.id,
+                'title': entry.title,
+                'status': entry.status,
+                'created_at': entry.created_at,
+                'username': entry.username,
+            })
+
+    average_age = round(sum(ages_hours) / len(ages_hours), 2) if ages_hours else 0.0
+    completion_ratio = round(complete / progress_total, 2) if progress_total else 0.0
+    momentum_score = round(
+        max(
+            (complete * 1.3 + in_progress * 0.9 + velocity_7d * 0.6 + velocity_24h * 0.4)
+            - (blocked * 1.4 + needs_review * 0.9),
+            0.0,
+        ),
+        2,
+    )
+
+    doubts = Doubt.query.order_by(Doubt.created_at.desc()).all()
+    total_doubts = len(doubts)
+    open_doubts = sum(1 for item in doubts if not item.resolved)
+    resolved_doubts = total_doubts - open_doubts
+    resolution_rate = round(resolved_doubts / total_doubts, 2) if total_doubts else 0.0
+
+    projects = Project.query.order_by(Project.created_at.desc()).all()
+    visibility_counts = Counter((project.visibility or 'public') for project in projects)
+    total_snippets = sum(len(getattr(project, 'snippets', []) or []) for project in projects)
+
+    tag_counter: Counter[str] = Counter()
+    for project in projects:
+        tags: List[str] = []
+        if project.tags:
+            try:
+                parsed = json.loads(project.tags)
+                if isinstance(parsed, list):
+                    tags = [str(item).strip().lower() for item in parsed if str(item).strip()]
+                elif isinstance(parsed, str):
+                    tags = [frag.strip().lower() for frag in parsed.split(',') if frag.strip()]
+            except ValueError:
+                tags = [frag.strip().lower() for frag in project.tags.split(',') if frag.strip()]
+        for tag in tags:
+            tag_counter[tag] += 1
+
+    top_tags = [{'tag': tag, 'count': count} for tag, count in tag_counter.most_common(6)]
+    recent_projects = [
+        {
+            'title': project.title,
+            'owner': project.owner,
+            'created_at': project.created_at,
+            'visibility': project.visibility or 'public',
+        }
+        for project in projects[:5]
+    ]
+
+    focus = _build_focus_area(
+        progress_counts,
+        progress_total,
+        blocked,
+        needs_review,
+        open_doubts,
+        resolved_doubts,
+        completion_ratio,
+        momentum_score,
+    )
+
+    metrics_digest = (
+        f"Progress total {progress_total} (complete {complete}, blocked {blocked}, needs review {needs_review}). "
+        f"Velocity 7d {velocity_7d}, last 24h {velocity_24h}. "
+        f"Doubts open {open_doubts} of {total_doubts}. "
+        f"Projects {len(projects)} with {total_snippets} snippets. "
+        f"Top tags: {', '.join(tag['tag'] for tag in top_tags[:3]) or 'none'}."
+    )
+
+    ai_recommendation = _call_openai(
+        "You are AuraLog's mission strategist. Given these metrics, propose one actionable recommendation (max 2 sentences) "
+        "balancing delivery velocity and code quality."
+        f"\nMetrics: {metrics_digest}\nFocus: {focus['headline']} — {focus['detail']}"
+    )
+
+    fallback_recommendation = (
+        ' • '.join(focus['actions'])
+        if focus['actions']
+        else focus['detail']
+    )
+
+    return {
+        'generated_at': now.isoformat(),
+        'summary': {
+            'progress_total': progress_total,
+            'progress_blocked': blocked,
+            'progress_needs_review': needs_review,
+            'progress_complete': complete,
+            'progress_in_progress': in_progress,
+            'velocity': {'last_24h': velocity_24h, 'last_7d': velocity_7d},
+            'average_age_hours': average_age,
+            'completion_ratio': completion_ratio,
+            'momentum_score': momentum_score,
+        },
+        'doubts': {
+            'total': total_doubts,
+            'open': open_doubts,
+            'resolved': resolved_doubts,
+            'resolution_rate': resolution_rate,
+        },
+        'projects': {
+            'total': len(projects),
+            'visibility': visibility_counts,
+            'recent': recent_projects,
+            'snippet_count': total_snippets,
+            'tag_leaders': top_tags,
+        },
+        'focus': focus,
+        'timeline': timeline,
+        'recommendation': ai_recommendation.strip() if ai_recommendation else fallback_recommendation,
+        'trending': [tag['tag'] for tag in top_tags[:5]],
+        'hybrid_model': 'heuristics+optional-openai',
+    }
+
+
 @app.route('/')
 def index():
     return send_from_directory('.', 'index.html')
@@ -364,6 +582,7 @@ def register():
             public_profile=True,
             email_visible=False,
             notifications=json.dumps({'progress': True, 'doubts': True, 'projects': True}),
+            photos_json=json.dumps([]),
         )
         db.session.add(user)
         db.session.commit()
@@ -422,7 +641,7 @@ def update_profile(username: str):
     # allow a small set of fields to be updated
     allowed = {
         'fullName', 'bio', 'avatar', 'github', 'linkedin', 'website',
-        'public_profile', 'email_visible', 'theme', 'code_theme', 'notifications'
+        'public_profile', 'email_visible', 'theme', 'code_theme', 'notifications', 'photos'
     }
     bool_fields = {'public_profile', 'email_visible'}
     changed = False
@@ -442,6 +661,16 @@ def update_profile(username: str):
                 else:
                     continue
                 user.notifications = json.dumps(notifications_payload)
+                changed = True
+                continue
+
+            if key == 'photos':
+                photos_payload: List[str] = []
+                if isinstance(val, list):
+                    photos_payload = [str(item).strip() for item in val if str(item).strip()]
+                elif isinstance(val, str):
+                    photos_payload = [frag.strip() for frag in val.split(',') if frag.strip()]
+                user.photos_json = json.dumps(photos_payload[:12]) if photos_payload else None
                 changed = True
                 continue
 
@@ -576,10 +805,12 @@ def create_doubt_response(doubt_id: int):
     if not responder or not message:
         return jsonify(success=False, error='Missing responder or message'), 400
 
-    if Doubt.query.get(doubt_id) is None:
+    doubt = Doubt.query.get(doubt_id)
+    if doubt is None:
         return jsonify(success=False, error='Doubt not found'), 404
 
     created_at = datetime.now(timezone.utc).isoformat()
+    resolve_flag = payload.get('resolved')
 
     try:
         response = DoubtResponse(
@@ -590,6 +821,12 @@ def create_doubt_response(doubt_id: int):
             is_ai=is_ai,
         )
         db.session.add(response)
+        if resolve_flag is None:
+            if is_ai:
+                doubt.resolved = True
+        else:
+            doubt.resolved = bool(resolve_flag)
+        db.session.add(doubt)
         db.session.commit()
         return jsonify(success=True, item=response.to_dict())
     except Exception:
@@ -733,7 +970,7 @@ def add_project_snippet(project_id: str):
         )
         db.session.add(snippet)
         project.updated_at = now
-        metadata_dict = project.metadata_dict
+        metadata_dict = project.metadata_dict 
         metadata_dict['snippet_count'] = len(getattr(project, 'snippets', []))
         project.metadata_json = json.dumps(metadata_dict)
         db.session.commit()
@@ -742,6 +979,16 @@ def add_project_snippet(project_id: str):
         db.session.rollback()
         app.logger.error('Failed to add snippet: %s', exc)
         return jsonify(success=False, error='Could not save snippet'), 500
+
+
+@app.get('/api/insights')
+def get_mission_insights():
+    try:
+        snapshot = _compute_mission_insights()
+        return jsonify(success=True, **snapshot)
+    except Exception as exc:
+        app.logger.error('Failed to compute mission insights: %s', exc)
+        return jsonify(success=False, error='Could not generate insights'), 500
 
 
 if __name__ == '__main__':
