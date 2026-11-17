@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# Local database (created by `flask db upgrade`)
+*.db
+*.sqlite3
+
+# Secrets / local config
+.env
+
+# Editor
+.idea/
